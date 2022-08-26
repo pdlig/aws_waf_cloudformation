@@ -1,0 +1,705 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation template defines Web ACL resources
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Resources
+        Parameters:
+          - albARN
+      - Label:
+          default: Names
+        Parameters:
+          - tagName
+          - tagNamePrefix
+    ParameterLabels:
+      albARN:
+        default: ALB ARN
+      tagName:
+        default: Name Tag
+      tagNamePrefix:
+        default: Name Prefix
+Parameters:
+  albARN:
+    Description: ARN for the Application Load Balancer
+    Type: String
+    MinLength: '30'
+    MaxLength: '180'
+    Default: >-
+      arn:aws:elasticloadbalancing:eu-west-1:796996244258:loadbalancer/app/test-lb-pauldawson/92a4a3e041150994
+    ConstraintDescription: must be a valid ARN of Application Load Balancer.
+  APIGatewayARN:
+    Description: ARN for the API
+    Type: String
+    MinLength: '30'
+    MaxLength: '180'
+    Default: 'arn:aws:apigateway:eu-west-1::/restapis/v3ih4rtgl5/stages/mockstage'
+    ConstraintDescription: must be a valid ARN of API Gateway.
+  tagName:
+    Type: String
+    Description: Name tag value
+    MinLength: '5'
+    MaxLength: '25'
+    Default: Default
+  tagNamePrefix:
+    Description: The prefix for use in Name tag values
+    Type: String
+    MinLength: '5'
+    MaxLength: '25'
+    Default: default
+Resources:
+  webAcl:
+    Type: 'AWS::WAFv2::WebACL'
+    Properties:
+      Description: Web ACL for Application Load Balancer of Elastic Beanstalk
+      Name: !Sub '${tagNamePrefix}-webACL'
+      DefaultAction:
+        Allow: {}
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 0
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              ExcludedRules: []
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${tagNamePrefix}-AWSManagedRulesCommonRuleSet-metric'
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 1
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+              ExcludedRules: []
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${tagNamePrefix}-AWSManagedRulesKnownBadInputsRuleSet-metric'
+        - Name: AWSManagedRulesAnonymousIpList
+          Priority: 2
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAnonymousIpList
+              ExcludedRules: []
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${tagNamePrefix}-AWSManagedRulesAnonymousIpList-metric'
+        - Name: AWSManagedRulesAmazonIpReputationList
+          Priority: 3
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAmazonIpReputationList
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${tagNamePrefix}-AWSManagedRulesAmazonIpReputationList-metric'
+        - Name: AWSManagedRulesBotControlRuleSet
+          Priority: 4
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesBotControlRuleSet
+          OverrideAction:
+            Count: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${tagNamePrefix}-AWSManagedRulesBotControlRuleSet-metric'
+      Scope: REGIONAL
+      Tags:
+        - Key: Name
+          Value: !Sub '${tagName} OWASP Web ACL'
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${tagNamePrefix}-WebACL-metric'
+  cloudwatchLogsGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub 'aws-waf-logs-${tagNamePrefix}-web-owasp'
+      RetentionInDays: 180
+  webAcllogging:
+    Type: 'AWS::WAFv2::LoggingConfiguration'
+    Properties:
+      ResourceArn: !GetAtt 
+        - webAcl
+        - Arn
+      LogDestinationConfigs:
+        - !Sub >-
+          arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws-waf-logs-${tagNamePrefix}-web-owasp
+      LoggingFilter:
+        DefaultBehavior: KEEP
+        Filters:
+          - Behavior: KEEP
+            Conditions:
+              - ActionCondition:
+                  Action: BLOCK
+            Requirement: MEETS_ANY
+      RedactedFields:
+        - SingleHeader:
+            Name: password
+
+  WebACLAssociation001:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/2mip9wj8mh/stages/dev
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+
+  WebACLAssociation002:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/3fqfocsjpj/stages/dev
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation001
+
+
+  WebACLAssociation003:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/3kcphayel6/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation002
+
+
+  WebACLAssociation004:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/3kcphayel6/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation003
+
+
+  WebACLAssociation005:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/42rv4p95ah/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation004
+
+
+  WebACLAssociation006:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/42rv4p95ah/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation005
+
+
+  WebACLAssociation007:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/47vvgi3qki/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation006
+
+
+  WebACLAssociation008:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/47vvgi3qki/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation007
+
+
+  WebACLAssociation009:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/4v6lwle5yf/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation008
+
+
+  WebACLAssociation010:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/4v6lwle5yf/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation009
+
+
+  WebACLAssociation011:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/55rkre0nm1/stages/TalktoLex1
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation010
+
+
+  WebACLAssociation012:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/5e6tciwvz9/stages/bvt
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation011
+
+
+  WebACLAssociation013:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/72hnxtqlzd/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation012
+
+
+  WebACLAssociation014:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/72hnxtqlzd/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation013
+
+
+  WebACLAssociation015:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/7v6qqwiuik/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation014
+
+
+  WebACLAssociation016:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/962301b8ak/stages/bvt
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation015
+
+
+  WebACLAssociation017:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/962301b8ak/stages/prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation016
+
+
+  WebACLAssociation018:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/9m920q9qy3/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation017
+
+
+  WebACLAssociation019:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/af0xtkhel9/stages/Test
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation018
+
+
+  WebACLAssociation020:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/agyo74ttv4/stages/prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation019
+
+
+  WebACLAssociation021:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/cbzz9bboo3/stages/log
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation020
+
+
+  WebACLAssociation022:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/cjutdlq0p6/stages/prd
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation021
+
+
+  WebACLAssociation023:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/doun5ajb3f/stages/prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation022
+
+
+  WebACLAssociation024:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/doun5ajb3f/stages/services
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation023
+
+
+  WebACLAssociation025:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/e2o8qwm9ag/stages/bvt
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation024
+
+
+  WebACLAssociation026:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/hykrk2g3d8/stages/prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation025
+
+
+  WebACLAssociation027:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/i8rukp3s64/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation026
+
+
+  WebACLAssociation028:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/i8rukp3s64/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation027
+
+
+  WebACLAssociation029:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/kyuefgbnb2/stages/prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation028
+
+
+  WebACLAssociation030:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/lwif91i730/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation029
+
+
+  WebACLAssociation031:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/lwif91i730/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation030
+
+
+  WebACLAssociation032:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/mhdvi0a8te/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation031
+
+
+  WebACLAssociation033:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/mhdvi0a8te/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation032
+
+
+  WebACLAssociation034:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/mxj99oulbi/stages/services
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation033
+
+
+  WebACLAssociation035:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/py33da1ug1/stages/prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation034
+
+
+  WebACLAssociation036:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/qdps6x7jbi/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation035
+
+
+  WebACLAssociation037:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/qdps6x7jbi/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation036
+
+
+  WebACLAssociation038:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/r19spqih05/stages/log
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation037
+
+
+  WebACLAssociation039:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/s8r70qa3g1/stages/log
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation038
+
+
+  WebACLAssociation040:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/sqrbw0zypl/stages/Test
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation039
+
+
+  WebACLAssociation041:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/tfysb7wjed/stages/staging
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation040
+
+
+  WebACLAssociation042:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/uux3004hsa/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation041
+
+
+  WebACLAssociation043:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/uux3004hsa/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation042
+
+
+  WebACLAssociation044:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/v3ih4rtgl5/stages/mockstage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation043
+
+
+  WebACLAssociation045:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/vpv4bsn2xf/stages/demo
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation044
+
+
+  WebACLAssociation046:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/vvxrcki3ih/stages/bvt
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation045
+
+
+  WebACLAssociation047:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/w3oss4lhk4/stages/V2MboApi
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation046
+
+
+  WebACLAssociation048:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/wammlwclq4/stages/dev
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation047
+
+
+  WebACLAssociation049:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/wp8y3vpuh7/stages/services
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation048
+
+
+  WebACLAssociation050:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/wyh90tlxu8/stages/Test
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation049
+
+
+  WebACLAssociation051:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/x75jbj9s8f/stages/dev
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation050
+
+
+  WebACLAssociation052:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/xm0spy3xqa/stages/services
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation051
+
+
+  WebACLAssociation053:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/y36vm2xv78/stages/Prod
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation052
+
+
+  WebACLAssociation054:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    Properties:
+      ResourceArn: arn:aws:apigateway:eu-west-1::/restapis/y36vm2xv78/stages/Stage
+      WebACLArn: !GetAtt 
+        - webAcl
+        - Arn
+    DependsOn: WebACLAssociation053
+
+
+
+Outputs:
+  OWASPWebAclARN:
+    Description: ARN of WebACL
+    Value: !GetAtt 
+      - webAcl
+      - Arn
+  CloudwatchLogsGroupARN:
+    Description: ARN of CloudWatch Logs Group
+    Value: !GetAtt 
+      - cloudwatchLogsGroup
+      - Arn
